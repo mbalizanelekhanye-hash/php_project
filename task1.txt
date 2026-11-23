@@ -1,0 +1,61 @@
+<!-- task1.php -->
+<?php include 'menu.inc'; ?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Task 1 - Database Explanation</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h2 { color: #2c3e50; }
+        table { border-collapse: collapse; width: 80%; margin-bottom: 20px; }
+        table, th, td { border: 1px solid #333; }
+        th, td { padding: 8px; text-align: left; }
+        pre { background: #f4f4f4; padding: 10px; border: 1px solid #ccc; }
+        iframe { display: block; margin: 20px auto; }
+    </style>
+</head>
+<body>
+
+<h2>Task 1(a): Tables, Primary & Foreign Keys</h2>
+<table>
+    <tr><th>Table</th><th>Brief explanation</th><th>Primary Key</th><th>Foreign Keys</th></tr>
+    <tr><td>Modules</td><td>Academic modules offered</td><td>ModuleCode</td><td>None</td></tr>
+    <tr><td>Lecturers</td><td>Lecturers teaching/moderating</td><td>LecturerID</td><td>None</td></tr>
+    <tr><td>Roles</td><td>Different lecturer roles</td><td>RoleID</td><td>None</td></tr>
+    <tr><td>ModuleLecturerRole</td><td>Relationship between modules, lecturers, roles</td>
+        <td>Composite (ModuleCode, LecturerID, RoleID, Year)</td>
+        <td>ModuleCode → Modules<br>LecturerID → Lecturers<br>RoleID → Roles</td></tr>
+</table>
+
+<h2>Task 1(b): Users, Events & Registrations</h2>
+<pre>
+Users
+---------
+UserID (PK)
+UserName
+Email
+Password
+
+Events
+---------
+EventID (PK)
+EventName
+EventDate
+Location
+
+Registrations
+---------
+UserID (FK → Users.UserID)
+EventID (FK → Events.EventID)
+RegistrationDate
+</pre>
+<h2>Task 1(b): ER Diagram</h2>
+<img src="image/er_diagram.png" alt="ER Diagram for Users, Events & Registrations" width="600">
+
+<!-- Display the PHP code in iframe -->
+<iframe src="task1.txt" height="400" width="1200">
+Your browser does not support iframes.
+</iframe>
+
+</body>
+</html>

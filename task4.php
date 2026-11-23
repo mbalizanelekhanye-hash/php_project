@@ -1,0 +1,331 @@
+<?php include 'menu.inc'; ?>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Task 4 - Training Registration System</title>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    table { border-collapse: collapse; margin-bottom: 20px; width: 80%; }
+    th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+    h2 { color: #2c3e50; }
+    nav a { margin-right: 15px; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<?php
+session_start();
+
+/* ------------------ DATABASE ------------------ */
+class Database {
+    private static $host = "sql106.infinityfree.com";
+    private static $user = "if0_42470139";
+    private static $pass = "fUEMIElDSQfksP";
+    private static $dbname = "if0_42470139_training";
+
+    public static function connect() {
+        $conn = new mysqli(self::$host, self::$user, self::$pass, self::$dbname);
+        if ($conn->connect_error) die("Connection failed: " . $conn->connect_error);
+        return $conn;
+    }
+}
+
+/* ------------------ MODELS ------------------ */
+class Organisation {
+    public function create($name, $email, $username, $password) {
+        $conn = Database::connect();
+        $stmt = $conn->prepare("INSERT INTO Organisations (OrgName, ContactEmail, Username, Password) VALUES (?,?,?,?)");
+        $stmt->bind_param("ssss", $name, $email, $username, $password);
+        return $stmt->execute();
+    }
+    public function authenticate($username, $password) {
+        $conn = Database::connect();
+        $stmt = $conn->prepare("SELECT * FROM Organisations WHERE Username=? AND Password=?");
+        $stmt->bind_param("ss", $username, $password);
+        $stmt->execute();
+        return $stmt->get_result()->fetch_assoc();
+    }
+}
+
+class Employee {
+    public function create($orgID, $name, $email) {
+        $conn = Database::connect();
+        $stmt = $conn->prepare("INSERT INTO Employees (OrgID, EmpName, EmpEmail) VALUES (?,?,?)");
+        $stmt->bind_param("iss", $orgID, $name, $email);
+        return $stmt->execute();
+    }
+    public function getByOrg($orgID) {
+        $conn = Database::connect();
+        $stmt = $conn->prepare("SELECT * FROM Employees WHERE OrgID=?");
+        $stmt->bind_param("i", $orgID);
+        $stmt->execute();
+        return $stmt->get_result();
+    }
+}
+
+class Registration {
+    public function enroll($empID, $trainingID) {
+        $conn = Database::connect();
+        $stmt = $conn->prepare("INSERT INTO Registrations (EmpID, TrainingID, DateRegistered) VALUES (?,?,CURDATE())");
+        $stmt->bind_param("ii", $empID, $trainingID);
+        return $stmt->execute();
+    }
+    public function getByOrg($orgID) {
+        $conn = Database::connect();
+        $sql = "SELECT e.EmpName, t.TrainingName, t.Cost, r.DateRegistered
+                FROM Registrations r
+                JOIN Employees e ON r.EmpID = e.EmpID
+                JOIN Training t ON r.TrainingID = t.TrainingID
+                WHERE e.OrgID=?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $orgID);
+        $stmt->execute();
+        return $stmt->get_result();
+    }
+}
+
+class Admin {
+    public function listParticipantsByTraining($trainingID) {
+        $conn = Database::connect();
+        $sql = "SELECT e.EmpName, o.OrgName, r.DateRegistered
+                FROM Registrations r
+                JOIN Employees e ON r.EmpID = e.EmpID
+                JOIN Organisations o ON e.OrgID = o.OrgID
+                WHERE r.TrainingID=?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $trainingID);
+        $stmt->execute();
+        return $stmt->get_result();
+    }
+    public function listRegistrationsByCompany($orgID) {
+        $conn = Database::connect();
+        $sql = "SELECT e.EmpName, t.TrainingName, r.DateRegistered
+                FROM Registrations r
+                JOIN Employees e ON r.EmpID = e.EmpID
+                JOIN Training t ON r.TrainingID = t.TrainingID
+                WHERE e.OrgID=?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $orgID);
+        $stmt->execute();
+        return $stmt->get_result();
+    }
+}
+
+/* ------------------ ROUTING ------------------ */
+$action = $_GET['action'] ?? '';
+
+switch ($action) {
+    case 'register_org':
+        $org = new Organisation();
+        $org->create($_POST['OrgName'], $_POST['ContactEmail'], $_POST['Username'], $_POST['Password']);
+        echo "<p>Organisation registered successfully.</p>";
+        break;
+
+    case 'login_org':
+        $org = new Organisation();
+        $result = $org->authenticate($_POST['Username'], $_POST['Password']);
+        if ($result) {
+            $_SESSION['OrgID'] = $result['OrgID'];
+            echo "<p>Welcome, {$result['OrgName']}!</p>";
+            showNavMenu();
+            showEmployeeForm();
+            showEnrollForm($_SESSION['OrgID']);
+            showSummary($_SESSION['OrgID']);
+        } else {
+            echo "<p>Invalid login.</p>";
+        }
+        break;
+
+    case 'register_emp':
+        $emp = new Employee();
+        $emp->create($_SESSION['OrgID'], $_POST['EmpName'], $_POST['EmpEmail']);
+        echo "<p>Employee registered successfully.</p>";
+        showNavMenu();
+        showEmployeeForm();
+        break;
+
+    case 'enroll_training':
+        $reg = new Registration();
+        $reg->enroll($_POST['EmpID'], $_POST['TrainingID']);
+        echo "<p>Employee enrolled successfully.</p>";
+        showNavMenu();
+        showEnrollForm($_SESSION['OrgID']);
+        break;
+
+    case 'summary':
+        showNavMenu();
+        showSummary($_SESSION['OrgID']);
+        break;
+
+    case 'logout':
+        session_destroy();
+        echo "<p>You have been logged out.</p>";
+        showOrgRegisterForm();
+        showOrgLoginForm();
+        showAdminLoginForm();
+        break;
+
+    case 'admin_login':
+        if ($_POST['Username'] == 'admin' && $_POST['Password'] == 'admin123') {
+            echo "<p>Welcome Admin!</p>";
+            showNavMenu();
+            showAdminDashboard();
+        } else {
+            echo "<p>Invalid admin login.</p>";
+        }
+        break;
+
+    case 'participants_training':
+        $admin = new Admin();
+        $result = $admin->listParticipantsByTraining($_POST['TrainingID']);
+        echo "<h3>Participants for Training {$_POST['TrainingID']}</h3><table border='1'><tr><th>Employee</th><th>Organisation</th><th>Date</th></tr>";
+        while ($row = $result->fetch_assoc()) {
+            echo "<tr><td>{$row['EmpName']}</td><td>{$row['OrgName']}</td><td>{$row['DateRegistered']}</td></tr>";
+        }
+        echo "</table>";
+        break;
+
+    case 'registrations_company':
+        $admin = new Admin();
+        $result = $admin->listRegistrationsByCompany($_POST['OrgID']);
+        echo "<h3>Registrations for Organisation {$_POST['OrgID']}</h3><table border='1'><tr><th>Employee</th><th>Training</th><th>Date</th></tr>";
+        while ($row = $result->fetch_assoc()) {
+            echo "<tr><td>{$row['EmpName']}</td><td>{$row['TrainingName']}</td><td>{$row['DateRegistered']}</td></tr>";
+        }
+        echo "</table>";
+        break;
+
+    default:
+        showNavMenu();
+        showOrgRegisterForm();
+        showOrgLoginForm();
+        showAdminLoginForm();
+}
+
+/* ------------------ VIEWS ------------------ */
+function showNavMenu() {
+    echo '<nav>
+        <a href="task4.php">Home</a>
+        <a href="task4.php?action=summary">Summary</a>
+        <a href="task4.php?action=register_emp">Register Employee</a>
+        <a href="task4.php?action=enroll_training">Enroll Training</a>
+        <a href="task4.php?action=admin_login">Admin Login</a>
+        <a href="task4.php?action=logout">Logout</a>
+    </nav><hr>';
+}
+
+function showOrgRegisterForm() {
+    echo '<h2>Register Organisation</h2>
+    <form method="post" action="task4.php?action=register_org">
+      <label>Name:</label><br>
+      <input type="text" name="OrgName" required><br><br>
+      <label>Email:</label><br>
+      <input type="email" name="ContactEmail" required><br><br>
+      <label>Username:</label><br>
+      <input type="text" name="Username" required><br><br>
+      <label>Password:</label><br>
+      <input type="password" name="Password" required><br><br>
+      <button type="submit">Register</button>
+    </form>';
+}
+
+function showOrgLoginForm() {
+    echo '<h2>Organisation Login</h2>
+    <form method="post" action="task4.php?action=login_org">
+      <label>Username:</label><br>
+      <input type="text" name="Username" required><br><br>
+      <label>Password:</label><br>
+      <input type="password" name="Password" required><br><br>
+      <button type="submit">Login</button>
+    </form>';
+}
+
+function showEmployeeForm() {
+    echo '<h2>Register Employee</h2>
+    <form method="post" action="task4.php?action=register_emp">
+      <label>Name:</label><br>
+      <input type="text" name="EmpName" required><br><br>
+      <label>Email:</label><br>
+      <input type="email" name="EmpEmail" required><br><br>
+      <button type="submit">Register Employee</button>
+    </form>';
+}
+
+function showEnrollForm($orgID) {
+    $emp = new Employee();
+    $employees = $emp->getByOrg($orgID);
+    $conn = Database::connect();
+    $trainings = $conn->query("SELECT * FROM Training");
+
+    echo '<h2>Enroll Employee in Training</h2>
+    <form method="post" action="task4.php?action=enroll_training">
+      <label>Employee:</label><br>
+      <select name="EmpID" required>';
+    while ($row = $employees->fetch_assoc()) {
+        echo "<option value='{$row['EmpID']}'>{$row['EmpName']} ({$row['EmpEmail']})</option>";
+    }
+    echo '</select><br><br>';
+
+    echo '<label>Training:</label><br>
+      <select name="TrainingID" required>';
+    while ($t = $trainings->fetch_assoc()) {
+        echo "<option value='{$t['TrainingID']}'>{$t['TrainingName']} (Cost: {$t['Cost']})</option>";
+    }
+    echo '</select><br><br>';
+
+    echo '<button type="submit">Enroll</button>
+    </form>';
+}
+
+function showSummary($orgID) {
+    $reg = new Registration();
+    $summary = $reg->getByOrg($orgID);
+
+    echo '<h2>Employee Training Summary</h2>
+    <table border="1">
+      <tr><th>Employee</th><th>Training</th><th>Cost</th><th>Date</th></tr>';
+    $total = 0;
+    while ($row = $summary->fetch_assoc()) {
+        echo "<tr>
+                <td>{$row['EmpName']}</td>
+                <td>{$row['TrainingName']}</td>
+                <td>{$row['Cost']}</td>
+                <td>{$row['DateRegistered']}</td>
+              </tr>";
+        $total += $row['Cost'];
+    }
+    echo "</table><p><strong>Total Cost to Organisation: $total</strong></p>";
+}
+
+function showAdminLoginForm() {
+    echo '<h2>Admin Login</h2>
+    <form method="post" action="task4.php?action=admin_login">
+      <label>Username:</label><br>
+      <input type="text" name="Username" required><br><br>
+      <label>Password:</label><br>
+      <input type="password" name="Password" required><br><br>
+      <button type="submit">Login</button>
+    </form>';
+}
+
+function showAdminDashboard() {
+    echo '<h2>Admin Dashboard</h2>
+    <h3>View Participants by Training</h3>
+    <form method="post" action="task4.php?action=participants_training">
+      <label>Training ID:</label>
+      <input type="text" name="TrainingID" required><br><br>
+      <button type="submit">View Participants</button>
+    </form>
+    <h3>View Registrations by Company</h3>
+    <form method="post" action="task4.php?action=registrations_company">
+      <label>Organisation ID:</label>
+      <input type="text" name="OrgID" required><br><br>
+      <button type="submit">View Registrations</button>
+    </form>';
+}
+?>
+
+<iframe src="task4.txt" height="400" width="1200"></iframe>
+
+</body>
+</html>
